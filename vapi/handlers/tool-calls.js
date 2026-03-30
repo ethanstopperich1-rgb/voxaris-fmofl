@@ -102,31 +102,22 @@ function handleCheckAvailability(args) {
     };
   }
 
-  const isTelehealth = args.appointment_type === "telehealth";
-  const note = isTelehealth
-    ? " This would be a video consultation — they'll receive a link by email before the appointment."
-    : "";
-
   return {
     available: true,
     slots: slots.slice(0, 2),
-    message: `Two times available: ${slots[0].label}${slots[1] ? ` or ${slots[1].label}` : ""}. Offer both and let the caller pick.${note}`,
+    message: `Two times available: ${slots[0].label}${slots[1] ? ` or ${slots[1].label}` : ""}. Offer both and let the caller pick.`,
   };
 }
 
 // ── Book Appointment ──
 
 function handleBookAppointment(args) {
-  const isTelehealth = args.appointment_type === "telehealth";
-
   console.log(`[book-appointment] Booked: ${args.patient_first_name} ${args.patient_last_name} — ${args.appointment_type} at ${args.slot_start_iso}`);
 
-  let message = `Appointment confirmed for ${args.patient_first_name} ${args.patient_last_name}. Remind them to bring their insurance card and photo ID.`;
-  if (isTelehealth) {
-    message = `Telehealth appointment confirmed for ${args.patient_first_name} ${args.patient_last_name}. Let them know they'll receive a video link by email before the appointment. They should find a quiet, private place with good internet.`;
-  }
-
-  return { success: true, message };
+  return {
+    success: true,
+    message: `Appointment confirmed for ${args.patient_first_name} ${args.patient_last_name}. Remind them to bring their insurance card and photo ID.`,
+  };
 }
 
 // ── Reschedule Appointment ──
