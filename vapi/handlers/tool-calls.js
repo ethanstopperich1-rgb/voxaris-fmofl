@@ -23,6 +23,15 @@ function handleToolCalls(body) {
       case "book_appointment":
         result = handleBookAppointment(args);
         break;
+      case "reschedule_appointment":
+        result = handleRescheduleAppointment(args);
+        break;
+      case "log_prescription_inquiry":
+        result = handlePrescriptionInquiry(args);
+        break;
+      case "log_records_request":
+        result = handleRecordsRequest(args);
+        break;
       default:
         result = { success: false, error: `Unknown tool: ${name}` };
     }
@@ -37,22 +46,20 @@ function handleToolCalls(body) {
   return { results };
 }
 
-// ── Tool Handlers ──
+// ── Check Availability ──
 
 function handleCheckAvailability(args) {
-  // Generate realistic slots based on current date (ET)
   const now = new Date();
   const etNow = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
   const currentHour = etNow.getHours();
   const slots = [];
 
-  // Generate slots for next 5 business days
-  for (let d = 0; d < 7 && slots.length < 2; d++) {
+  for (let d = 0; d < 10 && slots.length < 2; d++) {
     const date = new Date(etNow);
     date.setDate(date.getDate() + d);
     const day = date.getDay();
 
-    // Skip weekends (FMOFL open Mon-Fri)
+    // Skip weekends
     if (day === 0 || day === 6) continue;
 
     const isToday = d === 0;
@@ -91,29 +98,67 @@ function handleCheckAvailability(args) {
   if (slots.length === 0) {
     return {
       available: false,
-      message: "No open slots found in the next few days. Ask the caller what day works best.",
+      message: "No open slots found. Ask the caller what day works best for them.",
     };
   }
+
+  const isTelehealth = args.appointment_type === "telehealth";
+  const note = isTelehealth
+    ? " This would be a video consultation — they'll receive a link by email before the appointment."
+    : "";
 
   return {
     available: true,
     slots: slots.slice(0, 2),
-    message: `Two times available: ${slots[0].label}${slots[1] ? ` or ${slots[1].label}` : ""}. Offer both and let the caller pick.`,
+    message: `Two times available: ${slots[0].label}${slots[1] ? ` or ${slots[1].label}` : ""}. Offer both and let the caller pick.${note}`,
   };
 }
 
+// ── Book Appointment ──
+
 function handleBookAppointment(args) {
+  const isTelehealth = args.appointment_type === "telehealth";
+
   console.log(`[book-appointment] Booked: ${args.patient_first_name} ${args.patient_last_name} — ${args.appointment_type} at ${args.slot_start_iso}`);
+
+  let message = `Appointment confirmed for ${args.patient_first_name} ${args.patient_last_name}. Remind them to bring their insurance card and photo ID.`;
+  if (isTelehealth) {
+    message = `Telehealth appointment confirmed for ${args.patient_first_name} ${args.patient_last_name}. Let them know they'll receive a video link by email before the appointment. They should find a quiet, private place with good internet.`;
+  }
+
+  return { success: true, message };
+}
+
+// ── Reschedule Appointment ──
+
+function handleRescheduleAppointment(args) {
+  console.log(`[reschedule] ${args.patient_first_name} ${args.patient_last_name} — moving from ${args.current_appointment_date || "unknown"} to ${args.new_slot_start_iso}`);
 
   return {
     success: true,
-    message: `Appointment confirmed for ${args.patient_first_name} ${args.patient_last_name}. Remind them to bring their insurance card and photo ID.`,
-    appointment: {
-      type: args.appointment_type,
-      time: args.slot_start_iso,
-      patient: `${args.patient_first_name} ${args.patient_last_name}`,
-      phone: args.patient_phone,
-    },
+    message: `Appointment rescheduled for ${args.patient_first_name} ${args.patient_last_name}. Confirm the new date and time with them.`,
+  };
+}
+
+// ── Prescription Inquiry ──
+
+function handlePrescriptionInquiry(args) {
+  console.log(`[prescription] ${args.patient_first_name} ${args.patient_last_name} — ${args.inquiry_type}: ${args.details || "no details"}`);
+
+  return {
+    success: true,
+    message: "Message sent to the medical team. Tell the caller someone will call them back within a few hours to follow up on their medication question.",
+  };
+}
+
+// ── Medical Records Request ──
+
+function handleRecordsRequest(args) {
+  console.log(`[records-request] Company: ${args.company_name} — Patient: ${args.patient_name} — Requested by: ${args.caller_name}`);
+
+  return {
+    success: true,
+    message: "Request logged. Tell the caller the records team will follow up within 2-3 business days. Do not share any patient information.",
   };
 }
 
