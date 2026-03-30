@@ -1,6 +1,13 @@
 /**
- * tool-calls handler — executes tools and returns results to VAPI
+ * tool-calls handler — executes tools, logs to Google Sheets, returns results to VAPI
  */
+
+const {
+  logAppointment,
+  logReschedule,
+  logPrescriptionInquiry,
+  logRecordsRequest,
+} = require("../lib/google-sheets");
 
 function handleToolCalls(body) {
   const toolCalls = body.message?.toolCallList || [];
@@ -59,7 +66,6 @@ function handleCheckAvailability(args) {
     date.setDate(date.getDate() + d);
     const day = date.getDay();
 
-    // Skip weekends
     if (day === 0 || day === 6) continue;
 
     const isToday = d === 0;
@@ -70,7 +76,6 @@ function handleCheckAvailability(args) {
       timeZone: "America/New_York",
     });
 
-    // Morning slot: 10 AM
     if (!isToday || currentHour < 9) {
       const start = new Date(date);
       start.setHours(10, 0, 0, 0);
@@ -81,7 +86,6 @@ function handleCheckAvailability(args) {
       });
     }
 
-    // Afternoon slot: 2 PM
     if (!isToday || currentHour < 13) {
       const start = new Date(date);
       start.setHours(14, 0, 0, 0);
@@ -114,6 +118,9 @@ function handleCheckAvailability(args) {
 function handleBookAppointment(args) {
   console.log(`[book-appointment] Booked: ${args.patient_first_name} ${args.patient_last_name} — ${args.appointment_type} at ${args.slot_start_iso}`);
 
+  // Log to Google Sheets (fire-and-forget)
+  logAppointment(args).catch(() => {});
+
   return {
     success: true,
     message: `Appointment confirmed for ${args.patient_first_name} ${args.patient_last_name}. Remind them to bring their insurance card and photo ID.`,
@@ -124,6 +131,8 @@ function handleBookAppointment(args) {
 
 function handleRescheduleAppointment(args) {
   console.log(`[reschedule] ${args.patient_first_name} ${args.patient_last_name} — moving from ${args.current_appointment_date || "unknown"} to ${args.new_slot_start_iso}`);
+
+  logReschedule(args).catch(() => {});
 
   return {
     success: true,
@@ -136,6 +145,8 @@ function handleRescheduleAppointment(args) {
 function handlePrescriptionInquiry(args) {
   console.log(`[prescription] ${args.patient_first_name} ${args.patient_last_name} — ${args.inquiry_type}: ${args.details || "no details"}`);
 
+  logPrescriptionInquiry(args).catch(() => {});
+
   return {
     success: true,
     message: "Message sent to the medical team. Tell the caller someone will call them back within a few hours to follow up on their medication question.",
@@ -146,6 +157,8 @@ function handlePrescriptionInquiry(args) {
 
 function handleRecordsRequest(args) {
   console.log(`[records-request] Company: ${args.company_name} — Patient: ${args.patient_name} — Requested by: ${args.caller_name}`);
+
+  logRecordsRequest(args).catch(() => {});
 
   return {
     success: true,

@@ -2,6 +2,8 @@
  * end-of-call-report handler — stores transcript, cost, and recording URL
  */
 
+const { logCallSummary } = require("../lib/google-sheets");
+
 function handleEndOfCallReport(body) {
   const report = body.message || {};
   const callId = report.call?.id || "unknown";
@@ -26,6 +28,9 @@ function handleEndOfCallReport(body) {
       if (text) console.log(`  ${role}: ${text.slice(0, 150)}`);
     }
   }
+
+  // Log to Google Sheets (fire-and-forget)
+  logCallSummary(report).catch(() => {});
 
   return { ok: true };
 }
