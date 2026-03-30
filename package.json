@@ -1,0 +1,13 @@
+{
+  "name": "voxaris-fmofl",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VAPI inbound voice agent for Family Medicine of Orlando — Dr. Daniel Hay",
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod --yes"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7"
+  }
+}
