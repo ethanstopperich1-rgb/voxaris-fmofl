@@ -2,7 +2,7 @@
   "name": "voxaris-fmofl",
   "version": "1.0.0",
   "private": true,
-  "description": "VAPI inbound voice agent for Family Medicine of Orlando — Dr. Daniel Hay",
+  "description": "VAPI voice agent + Tavus V·FACE video concierge for Family Medicine of Orlando — Dr. Daniel Hay",
   "scripts": {
     "dev": "vercel dev",
     "deploy": "vercel --prod --yes"

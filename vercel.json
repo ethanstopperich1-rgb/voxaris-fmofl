@@ -16,6 +16,7 @@
     }
   ],
   "rewrites": [
-    { "source": "/health", "destination": "/api/health" }
+    { "source": "/health", "destination": "/api/health" },
+    { "source": "/vface", "destination": "/vface.html" }
   ]
 }
