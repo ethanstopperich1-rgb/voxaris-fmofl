@@ -233,10 +233,7 @@
     <div style="display: flex; flex-direction: row; height: calc(100vh - 49px);">
 
       <!-- ── LEFT: Video Area ── -->
-      <div style="flex: 1; background: #000; position: relative; display: flex; align-items: center; justify-content: center; min-height: 400px;">
-
-        <iframe id="videoFrame" style="width: 100%; height: 100%; border: none; background: #000;"
-          allow="camera; microphone; autoplay; display-capture"></iframe>
+      <div id="videoContainer" style="flex: 1; background: #000; position: relative; display: flex; align-items: center; justify-content: center; min-height: 400px;">
 
         <!-- Loading overlay -->
         <div id="videoLoading" style="position: absolute; inset: 0; background: #000; display: flex; align-items: center; justify-content: center; z-index: 10;">
@@ -379,9 +376,11 @@
   <!-- ═══════════════════════════════════════════════════════
        JAVASCRIPT
        ═══════════════════════════════════════════════════════ -->
+  <script src="https://unpkg.com/@daily-co/daily-js"></script>
   <script>
     let conversationId = null;
     let conversationUrl = null;
+    let callFrame = null;
     let isMuted = false;
     let isCameraOff = false;
     let intakeData = {};
@@ -417,119 +416,105 @@
         document.getElementById('sessionBadge').classList.remove('hidden');
         document.getElementById('sessionBadge').style.display = 'flex';
 
-        const iframe = document.getElementById('videoFrame');
-        iframe.src = conversationUrl;
+        // ── Create Daily.js call frame (NOT a bare iframe) ──
+        callFrame = DailyIframe.createFrame(
+          document.getElementById('videoContainer'),
+          {
+            iframeStyle: { width: '100%', height: '100%', border: 'none', background: '#000' },
+            showLeaveButton: false,
+            showFullscreenButton: false,
+          }
+        );
 
-        iframe.onload = () => {
-          setTimeout(() => {
-            document.getElementById('videoLoading').classList.add('hidden');
-            document.getElementById('controlsBar').classList.remove('hidden');
-            document.getElementById('controlsBar').style.display = 'flex';
+        // ── Listen for Tavus tool calls via app-message ──
+        callFrame.on('app-message', (event) => {
+          console.log('[VFACE] app-message received:', event);
 
-            // Enable Daily.co noise cancellation on the participant's mic
-            iframe.contentWindow?.postMessage({
-              action: 'update-input-settings',
-              inputSettings: {
-                audio: {
-                  processor: {
-                    type: 'noise-cancellation'
-                  }
-                }
-              }
-            }, '*');
-            console.log('[VFACE] Noise cancellation enabled');
-          }, 2000);
-        };
+          const msg = event.data || {};
+          const eventType = msg.event_type || '';
+
+          if (eventType === 'conversation.tool_call') {
+            const toolName = msg.properties?.name;
+            const rawArgs = msg.properties?.arguments;
+            const toolConvId = msg.conversation_id || conversationId;
+
+            console.log('[VFACE] Tool call:', toolName, rawArgs);
+
+            if (toolName === 'updateIntakeForm') {
+              let args = {};
+              try { args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : (rawArgs || {}); } catch { args = {}; }
+              delete args.response_to_user;
+
+              // Update sidebar immediately
+              applyIntakeUpdate(args);
+
+              // Persist to backend
+              fetch(`${API_BASE}/api/vface/tools`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  conversation_id: toolConvId,
+                  tool_call_id: msg.properties?.tool_call_id || 'frontend',
+                  tool_name: 'updateIntakeForm',
+                  parameters: args,
+                }),
+              }).catch(err => console.error('[VFACE] Backend persist failed:', err));
+
+              // Send result back to Tavus via conversation.echo
+              const resultText = `Intake updated: ${Object.entries(args).map(([k,v]) => k + ': ' + v).join(', ')}`;
+              callFrame.sendAppMessage({
+                message_type: 'conversation',
+                event_type: 'conversation.echo',
+                conversation_id: toolConvId,
+                properties: {
+                  modality: 'text',
+                  text: resultText,
+                  done: true,
+                },
+              }, '*');
+              console.log('[VFACE] Echo sent back to Tavus');
+            }
+          }
+        });
+
+        // ── Track when call is joined ──
+        callFrame.on('joined-meeting', () => {
+          console.log('[VFACE] Joined meeting');
+          document.getElementById('videoLoading').classList.add('hidden');
+          document.getElementById('controlsBar').classList.remove('hidden');
+          document.getElementById('controlsBar').style.display = 'flex';
+
+          // Enable noise cancellation
+          callFrame.updateInputSettings({
+            audio: { processor: { type: 'noise-cancellation' } },
+          }).then(() => console.log('[VFACE] Noise cancellation enabled'))
+            .catch(err => console.warn('[VFACE] Noise cancellation failed:', err));
+        });
+
+        callFrame.on('left-meeting', () => {
+          console.log('[VFACE] Left meeting');
+        });
+
+        callFrame.on('error', (err) => {
+          console.error('[VFACE] Daily error:', err);
+        });
+
+        // ── Join the Tavus room ──
+        await callFrame.join({ url: conversationUrl });
 
         updateIntakeStatus('active');
         startPolling();
-        window.addEventListener('message', handleIframeMessage);
 
       } catch (err) {
         console.error('[VFACE] Failed to start session:', err);
         btn.disabled = false;
         btn.textContent = 'BEGIN INTAKE';
-        // Inline error — no alert popup
         const errEl = document.createElement('p');
         errEl.style.cssText = 'font-family: var(--font-data); font-size: 12px; color: var(--accent); margin-top: 12px; letter-spacing: 0.04em;';
         errEl.textContent = `[ERROR: ${err.message}]`;
         btn.parentNode.insertBefore(errEl, btn.nextSibling);
         setTimeout(() => errEl.remove(), 5000);
       }
-    }
-
-    // ── Handle messages from Daily iframe (Tavus tool calls come as app-message) ──
-    function handleIframeMessage(event) {
-      try {
-        const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        if (!msg || typeof msg !== 'object') return;
-
-        // Daily.co wraps app-messages in { action: "app-message", data: {...} }
-        const payload = (msg.action === 'app-message' || msg.action === 'appMessage')
-          ? (msg.data || msg.payload || msg)
-          : msg;
-
-        // Log all messages for debugging
-        const eventType = payload.event_type || payload.type || msg.action || 'unknown';
-        if (eventType !== 'unknown') {
-          console.log('[VFACE] iframe event:', eventType, payload);
-        }
-
-        // ── Tavus tool call: conversation.tool_call ──
-        if (payload.event_type === 'conversation.tool_call') {
-          const toolName = payload.properties?.name;
-          const rawArgs = payload.properties?.arguments;
-          const toolConvId = payload.conversation_id;
-
-          console.log('[VFACE] Tool call received:', toolName, rawArgs);
-
-          if (toolName === 'updateIntakeForm') {
-            let args = {};
-            try { args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : (rawArgs || {}); } catch { args = {}; }
-
-            // Remove response_to_user if present
-            delete args.response_to_user;
-
-            // Update sidebar
-            applyIntakeUpdate(args);
-
-            // Persist to backend
-            fetch(`${API_BASE}/api/vface/tools`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                conversation_id: toolConvId || conversationId,
-                tool_call_id: payload.properties?.tool_call_id || 'frontend',
-                tool_name: 'updateIntakeForm',
-                parameters: args,
-              }),
-            }).catch(err => console.error('[VFACE] Backend persist failed:', err));
-
-            // Send result back to Tavus via conversation.echo
-            const resultText = `Intake updated: ${Object.entries(args).map(([k,v]) => k + ': ' + v).join(', ')}`;
-            const iframe = document.getElementById('videoFrame');
-            iframe.contentWindow?.postMessage({
-              message_type: 'conversation',
-              event_type: 'conversation.echo',
-              conversation_id: toolConvId || conversationId,
-              properties: {
-                modality: 'text',
-                text: resultText,
-                done: true,
-              },
-            }, '*');
-            console.log('[VFACE] Echo sent back to Tavus');
-          }
-          return;
-        }
-
-        // ── Fallback: direct tool name match ──
-        if (payload.tool_name === 'updateIntakeForm' || payload.type === 'updateIntakeForm') {
-          const data = payload.parameters || payload.data || payload;
-          applyIntakeUpdate(data);
-          return;
-        }
-      } catch { }
     }
 
     // ── Poll backend ──
@@ -611,7 +596,7 @@
     // ── Controls ──
     function toggleMute() {
       isMuted = !isMuted;
-      document.getElementById('videoFrame').contentWindow?.postMessage({ action: 'toggle-audio', muted: isMuted }, '*');
+      if (callFrame) callFrame.setLocalAudio(!isMuted);
       document.getElementById('micIcon').classList.toggle('hidden', isMuted);
       document.getElementById('micMutedIcon').classList.toggle('hidden', !isMuted);
       document.getElementById('muteBtn').classList.toggle('active', isMuted);
@@ -619,14 +604,14 @@
 
     function toggleCamera() {
       isCameraOff = !isCameraOff;
-      document.getElementById('videoFrame').contentWindow?.postMessage({ action: 'toggle-video', off: isCameraOff }, '*');
+      if (callFrame) callFrame.setLocalVideo(!isCameraOff);
       document.getElementById('camBtn').classList.toggle('active', isCameraOff);
     }
 
     // ── End Session ──
     function endSession() {
       if (pollInterval) clearInterval(pollInterval);
-      window.removeEventListener('message', handleIframeMessage);
+      if (callFrame) { callFrame.leave().catch(() => {}); callFrame.destroy(); callFrame = null; }
 
       document.getElementById('sessionLayout').classList.add('hidden');
       document.getElementById('sessionBadge').classList.add('hidden');
