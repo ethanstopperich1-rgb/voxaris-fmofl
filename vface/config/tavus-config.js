@@ -56,7 +56,7 @@ const config = {
     pipeline_mode: "full",
     layers: {
       llm: {
-        model: "tavus-gemini-3-flash",
+        model: "tavus-gpt-oss",
         speculative_inference: true,
         tools: [
           {

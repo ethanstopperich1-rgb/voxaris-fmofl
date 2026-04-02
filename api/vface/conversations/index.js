@@ -54,12 +54,11 @@ module.exports = async function handler(req, res) {
       context += `The patient prefers to speak in ${language}. Switch to that language immediately. `;
     }
 
-    // ── CRITICAL: .trim() the base URL to prevent newline corruption in callback_url ──
+    // Use production domain for callback URL — VERCEL_URL changes per deployment
+    // but the callback must be stable so Tavus can reach it after redeployments
     const baseUrl = (
       process.env.VFACE_BASE_URL
-      || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "")
-      || process.env.NEXT_PUBLIC_BASE_URL
-      || "http://localhost:3000"
+      || "https://fmofl-command.vercel.app"
     ).trim();
 
     const callbackUrl = `${baseUrl}/api/vface/tools`;

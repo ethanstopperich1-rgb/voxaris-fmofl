@@ -4,29 +4,29 @@
  * Tool router for Tavus CVI webhook callbacks.
  * Tavus POSTs here when the AI avatar calls a tool (e.g., updateIntakeForm).
  *
- * The tool result is sent back to Tavus via the conversations/{id}/tool_result endpoint,
- * AND an app-message is broadcast to the frontend so the sidebar updates in real time.
+ * Session state is persisted in Google Sheets ("Live_Sessions" tab) so it
+ * survives across Vercel serverless invocations.
  *
- * Tavus webhook payload shape:
- * {
- *   conversation_id: "c_...",
- *   tool_call_id: "tc_...",
- *   tool_name: "updateIntakeForm",
- *   parameters: { full_name: "...", date_of_birth: "...", ... }
- * }
+ * The tool result is sent back to Tavus via the conversations/{id}/tool_result endpoint.
  */
 
 const { sendToolResult } = require("../../../vface/server/tavus-client");
 const { logIntakeToSheet } = require("../../../vface/lib/sheets-logger");
-
-// ── In-memory store for active sessions (keyed by conversation_id) ──
-// In production, swap for Redis or a database.
-const activeSessions = new Map();
+const { putSession, getSession } = require("../../../vapi/lib/google-sheets");
 
 module.exports = async function handler(req, res) {
   // CORS preflight
   if (req.method === "OPTIONS") {
     return res.status(200).end();
+  }
+
+  // GET: frontend polls for latest intake state
+  if (req.method === "GET") {
+    const cid = req.query?.conversation_id;
+    if (!cid) return res.status(200).json({ intake: null });
+
+    const session = await getSession(cid);
+    return res.status(200).json({ intake: session });
   }
 
   if (req.method !== "POST") {
@@ -59,14 +59,11 @@ module.exports = async function handler(req, res) {
     console.log("[vface/tools] Lifecycle event:", eventType);
 
     if (eventType === "conversation.ended" || eventType === "conversation_ended") {
-      // Clean up session data
       if (conversation_id) {
-        const session = activeSessions.get(conversation_id);
+        const session = await getSession(conversation_id);
         if (session) {
           console.log("[vface/tools] Session ended, final intake data:", session);
-          // Log final state to Google Sheets
           await logIntakeToSheet(session);
-          activeSessions.delete(conversation_id);
         }
       }
     }
@@ -94,8 +91,8 @@ async function handleUpdateIntakeForm({ conversation_id, tool_call_id, parameter
     symptoms,
   } = parameters || {};
 
-  // Store/merge intake data for this session
-  const existing = activeSessions.get(conversation_id) || {};
+  // Read existing session from Sheets, merge new data
+  const existing = (await getSession(conversation_id)) || {};
   const merged = {
     ...existing,
     conversation_id,
@@ -109,7 +106,10 @@ async function handleUpdateIntakeForm({ conversation_id, tool_call_id, parameter
   if (medical_history) merged.medical_history = medical_history;
   if (symptoms) merged.symptoms = Array.isArray(symptoms) ? symptoms : [symptoms];
 
-  activeSessions.set(conversation_id, merged);
+  // Persist to Sheets
+  putSession(conversation_id, merged).catch((err) =>
+    console.error("[vface/tools] Failed to persist session:", err)
+  );
 
   console.log("[vface/tools] Intake form updated:", merged);
 
@@ -151,11 +151,3 @@ async function handleBookOnlineConsultation({ conversation_id, tool_call_id, par
     console.error("[vface/tools] Failed to send tool result for booking:", err);
   }
 }
-
-// ── SSE endpoint for frontend to poll session data ──
-// The frontend polls GET /api/vface/tools?conversation_id=xxx to get latest intake state.
-// (Tavus app-message is the primary real-time channel, this is the fallback.)
-
-module.exports.getSessionData = function getSessionData(conversationId) {
-  return activeSessions.get(conversationId) || null;
-};
