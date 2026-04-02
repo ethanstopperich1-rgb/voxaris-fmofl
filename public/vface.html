@@ -467,14 +467,14 @@
                 }),
               }).catch(err => console.error('[VFACE] Backend persist failed:', err));
 
-              const resultText = `Intake updated: ${Object.entries(args).map(([k,v]) => k + ': ' + v).join(', ')}`;
+              const resultText = `Tool succeeded. Intake form updated with: ${Object.keys(args).join(', ')}. Continue collecting the next piece of patient information.`;
               callFrame.sendAppMessage({
                 message_type: 'conversation',
-                event_type: 'conversation.echo',
+                event_type: 'conversation.append_llm_context',
                 conversation_id: toolConvId,
                 properties: { modality: 'text', text: resultText, done: true },
               }, '*');
-              console.log('[VFACE] Echo sent to Tavus');
+              console.log('[VFACE] Context appended (silent)');
             }
           }
         });
