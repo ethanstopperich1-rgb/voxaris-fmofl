@@ -73,6 +73,7 @@ module.exports = async function handler(req, res) {
       greeting,
       context: context || undefined,
       callbackUrl,
+      language: language || undefined,
     });
 
     console.log("[vface/conversations] Session created:", {

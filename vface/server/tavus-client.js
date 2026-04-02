@@ -56,7 +56,7 @@ function tavusRequest(method, path, body = null) {
 
 // ── Conversations ──
 
-async function createConversation({ greeting, context, conversationName, callbackUrl }) {
+async function createConversation({ greeting, context, conversationName, callbackUrl, language }) {
   const payload = {
     persona_id: config.personaId,
     replica_id: config.replicaId,
@@ -67,6 +67,18 @@ async function createConversation({ greeting, context, conversationName, callbac
   if (greeting) payload.custom_greeting = greeting;
   if (context) payload.conversational_context = context;
   if (callbackUrl) payload.callback_url = callbackUrl;
+
+  // Override TTS for Portuguese — use ElevenLabs multilingual voice
+  if (language === "portuguese") {
+    payload.properties.language = "portuguese";
+    payload.layers = {
+      tts: {
+        tts_engine: "elevenlabs",
+        tts_model_name: "eleven_multilingual_v2",
+        external_voice_id: "GDzHdQOi6jjf8zaXhCYD",
+      },
+    };
+  }
 
   console.log("[tavus-client] Creating conversation:", {
     persona_id: payload.persona_id,
