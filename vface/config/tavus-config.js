@@ -57,33 +57,29 @@ const config = {
     layers: {
       llm: {
         model: "tavus-gpt-oss",
-        speculative_inference: true,
+        speculative_inference: false,
         tools: [
           {
             type: "function",
             function: {
               name: "updateIntakeForm",
               description:
-                "Update the live patient intake form on the right sidebar in real time. Call this immediately whenever you learn new patient information.",
+                "Update the patient intake form. Call ONLY after confirming a specific piece of patient data. Pass ONLY the named fields below — never pass response_to_user or raw strings.",
               parameters: {
                 type: "object",
                 properties: {
-                  full_name: { type: "string", description: "Patient's full name" },
-                  date_of_birth: { type: "string", description: "Patient's DOB (MM/DD/YYYY)" },
-                  insurance_provider: { type: "string", description: "Insurance provider or self-pay" },
-                  reason_for_visit: {
-                    type: "string",
-                    description:
-                      "Routine physical, school physical, immigration exam, injection, urgent symptoms, etc.",
-                  },
-                  medical_history: { type: "string", description: "Any history, allergies, medications" },
+                  full_name: { type: "string", description: "Patient's full legal name as stated" },
+                  date_of_birth: { type: "string", description: "Patient's date of birth in MM/DD/YYYY format" },
+                  insurance_provider: { type: "string", description: "Name of insurance provider, or 'self-pay' if uninsured" },
+                  reason_for_visit: { type: "string", description: "Primary reason for visit (e.g. annual physical, pain, follow-up)" },
+                  medical_history: { type: "string", description: "Known conditions, allergies, or current medications" },
                   symptoms: {
                     type: "array",
                     items: { type: "string" },
-                    description: "List of current symptoms or concerns",
+                    description: "List of current symptoms (e.g. ['headache', 'fatigue'])",
                   },
                 },
-                required: ["full_name"],
+                required: [],
               },
             },
           },

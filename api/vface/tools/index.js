@@ -127,29 +127,27 @@ async function handleUpdateIntakeForm({ conversation_id, tool_call_id, parameter
   if (medical_history) merged.medical_history = medical_history;
   if (symptoms) merged.symptoms = Array.isArray(symptoms) ? symptoms : [symptoms];
 
-  // Persist to Sheets
-  putSession(conversation_id, merged).catch((err) =>
-    console.error("[vface/tools] Failed to persist session:", err)
-  );
-
   console.log("[vface/tools] Intake form updated:", merged);
 
-  // Respond to Tavus immediately (200 OK) so the avatar doesn't hang
-  res.status(200).json({
+  // Persist to Sheets and send tool result BEFORE responding
+  // (Vercel can freeze the function after res.json, killing any pending awaits)
+  try {
+    await Promise.all([
+      putSession(conversation_id, merged),
+      sendToolResult(conversation_id, tool_call_id, {
+        success: true,
+        message: `Updated intake form. Current data: Name: ${merged.full_name || "pending"}, DOB: ${merged.date_of_birth || "pending"}, Reason: ${merged.reason_for_visit || "pending"}, Insurance: ${merged.insurance_provider || "pending"}.`,
+      }),
+    ]);
+    console.log("[vface/tools] Session persisted + tool result sent to Tavus");
+  } catch (err) {
+    console.error("[vface/tools] Failed:", err);
+  }
+
+  return res.status(200).json({
     ok: true,
     message: `Intake form updated for ${full_name || "patient"}`,
   });
-
-  // Send tool result back to Tavus so the avatar knows the tool succeeded
-  try {
-    await sendToolResult(conversation_id, tool_call_id, {
-      success: true,
-      message: `Updated intake form. Current data: Name: ${merged.full_name || "pending"}, DOB: ${merged.date_of_birth || "pending"}, Reason: ${merged.reason_for_visit || "pending"}, Insurance: ${merged.insurance_provider || "pending"}.`,
-    });
-    console.log("[vface/tools] Tool result sent back to Tavus");
-  } catch (err) {
-    console.error("[vface/tools] Failed to send tool result:", err);
-  }
 }
 
 // ── bookOnlineConsultation handler (placeholder for Phase 2) ──
