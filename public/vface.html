@@ -416,19 +416,28 @@
         document.getElementById('sessionBadge').classList.remove('hidden');
         document.getElementById('sessionBadge').style.display = 'flex';
 
-        // ── Create Daily.js call frame (NOT a bare iframe) ──
+        // ── Hide loading overlay so Daily iframe can render ──
+        document.getElementById('videoLoading').style.display = 'none';
+
+        // ── Create Daily.js call frame ──
         callFrame = DailyIframe.createFrame(
           document.getElementById('videoContainer'),
           {
-            iframeStyle: { width: '100%', height: '100%', border: 'none', background: '#000' },
+            iframeStyle: {
+              position: 'absolute',
+              top: '0', left: '0',
+              width: '100%', height: '100%',
+              border: 'none', background: '#000',
+              zIndex: '5',
+            },
             showLeaveButton: false,
             showFullscreenButton: false,
           }
         );
 
-        // ── Listen for Tavus tool calls via app-message ──
+        // ── Listen for ALL app-messages (Tavus tool calls) ──
         callFrame.on('app-message', (event) => {
-          console.log('[VFACE] app-message received:', event);
+          console.log('[VFACE] app-message:', JSON.stringify(event.data).slice(0, 500));
 
           const msg = event.data || {};
           const eventType = msg.event_type || '';
@@ -445,10 +454,8 @@
               try { args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : (rawArgs || {}); } catch { args = {}; }
               delete args.response_to_user;
 
-              // Update sidebar immediately
               applyIntakeUpdate(args);
 
-              // Persist to backend
               fetch(`${API_BASE}/api/vface/tools`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -460,47 +467,39 @@
                 }),
               }).catch(err => console.error('[VFACE] Backend persist failed:', err));
 
-              // Send result back to Tavus via conversation.echo
               const resultText = `Intake updated: ${Object.entries(args).map(([k,v]) => k + ': ' + v).join(', ')}`;
               callFrame.sendAppMessage({
                 message_type: 'conversation',
                 event_type: 'conversation.echo',
                 conversation_id: toolConvId,
-                properties: {
-                  modality: 'text',
-                  text: resultText,
-                  done: true,
-                },
+                properties: { modality: 'text', text: resultText, done: true },
               }, '*');
-              console.log('[VFACE] Echo sent back to Tavus');
+              console.log('[VFACE] Echo sent to Tavus');
             }
           }
         });
 
-        // ── Track when call is joined ──
         callFrame.on('joined-meeting', () => {
           console.log('[VFACE] Joined meeting');
-          document.getElementById('videoLoading').classList.add('hidden');
           document.getElementById('controlsBar').classList.remove('hidden');
           document.getElementById('controlsBar').style.display = 'flex';
 
-          // Enable noise cancellation
           callFrame.updateInputSettings({
             audio: { processor: { type: 'noise-cancellation' } },
           }).then(() => console.log('[VFACE] Noise cancellation enabled'))
-            .catch(err => console.warn('[VFACE] Noise cancellation failed:', err));
+            .catch(err => console.warn('[VFACE] Noise cancellation unavailable:', err));
         });
 
-        callFrame.on('left-meeting', () => {
-          console.log('[VFACE] Left meeting');
-        });
+        callFrame.on('left-meeting', () => console.log('[VFACE] Left meeting'));
+        callFrame.on('error', (err) => console.error('[VFACE] Daily error:', err));
 
-        callFrame.on('error', (err) => {
-          console.error('[VFACE] Daily error:', err);
+        // ── Join the room ──
+        console.log('[VFACE] Joining:', conversationUrl);
+        await callFrame.join({
+          url: conversationUrl,
+          startVideoOff: false,
+          startAudioOff: false,
         });
-
-        // ── Join the Tavus room ──
-        await callFrame.join({ url: conversationUrl });
 
         updateIntakeStatus('active');
         startPolling();
