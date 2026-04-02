@@ -207,6 +207,31 @@ async function logCallSummary(report) {
   ]);
 }
 
+async function logStructuredData(data) {
+  return appendRow("Call Analysis", [
+    nowET(),
+    data.callId || "",
+    data.call_type || "",
+    `${data.patient_first_name || ""} ${data.patient_last_name || ""}`.trim(),
+    data.patient_phone || "",
+    data.patient_type || "",
+    data.appointment_type || "",
+    data.appointment_booked ? "Yes" : "No",
+    data.appointment_datetime || "",
+    data.prescription_inquiry_type || "",
+    data.transferred_to_human ? "Yes" : "No",
+    data.language_used || "",
+    data.caller_sentiment || "",
+    data.resolution_status || "",
+    data.follow_up_needed ? "Yes" : "No",
+    data.follow_up_reason || "",
+    data.summary || "",
+    data.successEvaluation !== null && data.successEvaluation !== undefined ? String(data.successEvaluation) : "",
+    `${data.duration || 0}s`,
+    `$${(data.cost || 0).toFixed(4)}`,
+  ]);
+}
+
 // ── Live Session KV (uses "Live_Sessions" tab as a key-value store) ──
 // Row format: [conversation_id, json_data, updated_at]
 // On write: find existing row for conversation_id and update it, or append
@@ -302,6 +327,7 @@ module.exports = {
   logPrescriptionInquiry,
   logRecordsRequest,
   logCallSummary,
+  logStructuredData,
   appendRow,
   getAccessToken,
   putSession,
