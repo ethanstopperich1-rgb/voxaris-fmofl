@@ -232,7 +232,7 @@ async function logStructuredData(data) {
   ]);
 }
 
-// ── Live Session KV (uses "Live_Sessions" tab as a key-value store) ──
+// ── Live Session KV (uses "Live Sessions" tab as a key-value store) ──
 // Row format: [conversation_id, json_data, updated_at]
 // On write: find existing row for conversation_id and update it, or append
 // On read: scan for conversation_id and return parsed JSON
@@ -250,7 +250,7 @@ async function putSession(conversationId, data) {
 
   if (rowIndex > 0) {
     // Update existing row
-    const range = `Live_Sessions!A${rowIndex}:C${rowIndex}`;
+    const range = `Live Sessions!A${rowIndex}:C${rowIndex}`;
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}?valueInputOption=RAW`;
     try {
       const resp = await fetch(url, {
@@ -263,7 +263,7 @@ async function putSession(conversationId, data) {
     } catch { return false; }
   } else {
     // Append new row
-    return appendRow("Live_Sessions", [conversationId, jsonStr, timestamp]);
+    return appendRow("Live Sessions", [conversationId, jsonStr, timestamp]);
   }
 }
 
@@ -273,7 +273,7 @@ async function getSession(conversationId) {
   if (!token) return null;
 
   try {
-    const range = `Live_Sessions!A:C`;
+    const range = `Live Sessions!A:C`;
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}?key=_&majorDimension=ROWS`;
     const resp = await fetch(
       url.replace("key=_&", ""),
@@ -298,13 +298,13 @@ async function getSession(conversationId) {
 
 async function deleteSession(conversationId) {
   // We don't actually delete — just leave it. Sessions are small and short-lived.
-  // The "Live_Sessions" tab can be periodically cleaned up manually.
+  // The "Live Sessions" tab can be periodically cleaned up manually.
   return true;
 }
 
 async function findSessionRow(token, conversationId) {
   try {
-    const range = `Live_Sessions!A:A`;
+    const range = `Live Sessions!A:A`;
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(range)}`;
     const resp = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
