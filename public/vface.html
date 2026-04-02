@@ -425,6 +425,19 @@
             document.getElementById('videoLoading').classList.add('hidden');
             document.getElementById('controlsBar').classList.remove('hidden');
             document.getElementById('controlsBar').style.display = 'flex';
+
+            // Enable Daily.co noise cancellation on the participant's mic
+            iframe.contentWindow?.postMessage({
+              action: 'update-input-settings',
+              inputSettings: {
+                audio: {
+                  processor: {
+                    type: 'noise-cancellation'
+                  }
+                }
+              }
+            }, '*');
+            console.log('[VFACE] Noise cancellation enabled');
           }, 2000);
         };
 
