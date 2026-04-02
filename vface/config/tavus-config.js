@@ -45,7 +45,7 @@ const config = {
       enable_recording: false,
       enable_transcription: true,
       enable_closed_captions: true,
-      language: "english",
+      language: "multilingual",
       apply_greenscreen: false,
     },
   },
@@ -97,6 +97,10 @@ const config = {
       },
       tts: {
         tts_engine: "cartesia",
+        tts_model_name: "sonic-3",
+        external_voice_id: "f9836c6e-a0bd-460e-9d3c-f7299fa60f94",
+        api_key: process.env.CARTESIA_API_KEY || "",
+        tts_emotion_control: true,
         voice_settings: {
           speed: 1.05,
           stability: 0.75,
