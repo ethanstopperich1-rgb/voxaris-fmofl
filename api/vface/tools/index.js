@@ -34,13 +34,28 @@ module.exports = async function handler(req, res) {
   }
 
   const body = req.body || {};
-  const { conversation_id, tool_call_id, tool_name, parameters } = body;
 
-  console.log("[vface/tools] Received:", {
-    tool_name,
-    conversation_id,
-    tool_call_id,
-    parameters,
+  // Log EVERYTHING Tavus sends so we can see the actual payload format
+  console.log("[vface/tools] RAW BODY:", JSON.stringify(body));
+
+  // Tavus may send tool calls in different formats:
+  // Format A: { tool_name, tool_call_id, conversation_id, parameters }
+  // Format B: { event_type, conversation_id, properties: { ... } }
+  // Format C: { conversation_id, objective_name, output_variables: { ... } }
+
+  const conversation_id = body.conversation_id;
+  const tool_call_id = body.tool_call_id;
+  const tool_name = body.tool_name;
+  const parameters = body.parameters;
+  const event_type = body.event_type;
+  const objective_name = body.objective_name;
+  const output_variables = body.output_variables;
+
+  console.log("[vface/tools] Parsed:", {
+    tool_name, event_type, objective_name,
+    conversation_id, tool_call_id,
+    has_parameters: !!parameters,
+    has_output_variables: !!output_variables,
   });
 
   // ── Route by tool name ──
@@ -71,12 +86,18 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({ ok: true, event: eventType });
   }
 
-  // ── Unknown tool ──
-  console.warn("[vface/tools] Unknown tool:", tool_name);
-  return res.status(200).json({
-    ok: true,
-    warning: `Unknown tool: ${tool_name}`,
-  });
+  // ── Objective callbacks (Tavus sends completed objective data) ──
+  if (objective_name && output_variables && conversation_id) {
+    console.log("[vface/tools] Objective callback:", objective_name, output_variables);
+    const existing = (await getSession(conversation_id)) || {};
+    const merged = { ...existing, conversation_id, updated_at: new Date().toISOString(), ...output_variables };
+    putSession(conversation_id, merged).catch(err => console.error("[vface/tools] Session persist failed:", err));
+    return res.status(200).json({ status: "success" });
+  }
+
+  // ── Catch-all: log and accept anything Tavus sends ──
+  console.warn("[vface/tools] Unhandled payload:", JSON.stringify(body).slice(0, 500));
+  return res.status(200).json({ status: "success" });
 };
 
 // ── updateIntakeForm handler ──
