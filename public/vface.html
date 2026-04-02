@@ -458,30 +458,75 @@
       }
     }
 
-    // ── Handle messages from Daily iframe ──
+    // ── Handle messages from Daily iframe (Tavus tool calls come as app-message) ──
     function handleIframeMessage(event) {
       try {
         const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        if (!msg || typeof msg !== 'object') return;
 
-        if (msg && typeof msg === 'object') {
-          console.log('[VFACE] iframe message:', msg.action || msg.type || msg.event_type || 'unknown', msg);
+        // Daily.co wraps app-messages in { action: "app-message", data: {...} }
+        const payload = (msg.action === 'app-message' || msg.action === 'appMessage')
+          ? (msg.data || msg.payload || msg)
+          : msg;
+
+        // Log all messages for debugging
+        const eventType = payload.event_type || payload.type || msg.action || 'unknown';
+        if (eventType !== 'unknown') {
+          console.log('[VFACE] iframe event:', eventType, payload);
         }
 
-        if (msg.action === 'app-message' || msg.action === 'appMessage') {
-          const payload = msg.data || msg.payload || {};
-          if (payload.tool_name === 'updateIntakeForm' || payload.type === 'updateIntakeForm') {
-            applyIntakeUpdate(payload.parameters || payload.data || payload);
-            return;
+        // ── Tavus tool call: conversation.tool_call ──
+        if (payload.event_type === 'conversation.tool_call') {
+          const toolName = payload.properties?.name;
+          const rawArgs = payload.properties?.arguments;
+          const toolConvId = payload.conversation_id;
+
+          console.log('[VFACE] Tool call received:', toolName, rawArgs);
+
+          if (toolName === 'updateIntakeForm') {
+            let args = {};
+            try { args = typeof rawArgs === 'string' ? JSON.parse(rawArgs) : (rawArgs || {}); } catch { args = {}; }
+
+            // Remove response_to_user if present
+            delete args.response_to_user;
+
+            // Update sidebar
+            applyIntakeUpdate(args);
+
+            // Persist to backend
+            fetch(`${API_BASE}/api/vface/tools`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                conversation_id: toolConvId || conversationId,
+                tool_call_id: payload.properties?.tool_call_id || 'frontend',
+                tool_name: 'updateIntakeForm',
+                parameters: args,
+              }),
+            }).catch(err => console.error('[VFACE] Backend persist failed:', err));
+
+            // Send result back to Tavus via conversation.echo
+            const resultText = `Intake updated: ${Object.entries(args).map(([k,v]) => k + ': ' + v).join(', ')}`;
+            const iframe = document.getElementById('videoFrame');
+            iframe.contentWindow?.postMessage({
+              message_type: 'conversation',
+              event_type: 'conversation.echo',
+              conversation_id: toolConvId || conversationId,
+              properties: {
+                modality: 'text',
+                text: resultText,
+                done: true,
+              },
+            }, '*');
+            console.log('[VFACE] Echo sent back to Tavus');
           }
-        }
-
-        if (msg.type === 'updateIntakeForm' || msg.event_type === 'updateIntakeForm' || msg.tool_name === 'updateIntakeForm') {
-          applyIntakeUpdate(msg.data || msg.parameters || msg);
           return;
         }
 
-        if ((msg.type === 'tool_result' || msg.type === 'tool-result') && msg.tool_name === 'updateIntakeForm') {
-          applyIntakeUpdate(msg.result || msg.data || msg.parameters || {});
+        // ── Fallback: direct tool name match ──
+        if (payload.tool_name === 'updateIntakeForm' || payload.type === 'updateIntakeForm') {
+          const data = payload.parameters || payload.data || payload;
+          applyIntakeUpdate(data);
           return;
         }
       } catch { }
